@@ -1,6 +1,6 @@
 import { Pool, neonConfig } from '@neondatabase/serverless'
 import { PrismaNeon } from '@prisma/adapter-neon'
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import chalk from 'chalk'
 import ws from 'ws'
 
@@ -23,14 +23,6 @@ export const prisma = (connectionString: string) => {
 		],
 	})
 
-	// const client = new PrismaClient({
-	// 	datasources: { db: { url: databaseUrl } },
-	// 	log: [
-	// 		{ level: 'query', emit: 'event' },
-	// 		{ level: 'error', emit: 'stdout' },
-	// 		{ level: 'warn', emit: 'stdout' },
-	// 	],
-	// })
 	client.$on('query', async e => {
 		if (e.duration < logThreshold) return
 		const color =
@@ -46,7 +38,23 @@ export const prisma = (connectionString: string) => {
 		const dur = chalk[color](`${e.duration}ms`)
 		console.info(`prisma:query - ${dur} - ${e.query}`)
 	})
-	client.$connect()
+
+	client.$on('query', e => {
+		console.info('Executing Query...')
+		console.info('Query', e)
+	})
+
+	try {
+		client.$connect()
+	} catch (e) {
+		console.error('Error connecting to the database')
+		if (e instanceof Prisma.PrismaClientInitializationError) {
+			console.error('PrismaClientInitializationError')
+			// do something smart here?
+		}
+		throw e
+	}
+
 	return client
 }
 export const db = prisma // alias for prisma

@@ -23,13 +23,21 @@ export const SESSION_EXPIRATION_TIME = 1000 * 60 * 60 * 24 * 30
 export const getSessionExpirationDate = () => new Date(Date.now() + SESSION_EXPIRATION_TIME)
 
 export async function getUserId({ db, authSessionStorage }: StorageContext, request: Request) {
+	console.log('getUserId')
 	const authSession = await authSessionStorage.getSession(request.headers.get('cookie'))
 	const sessionId = authSession.get(sessionKey)
 	if (!sessionId) return null
-	const session = await db.session.findUnique({
-		select: { user: { select: { id: true } } },
-		where: { id: sessionId, expirationDate: { gt: new Date() } },
-	})
+	let session = null
+	try {
+		console.log('here we go')
+		session = await db.session.findUnique({
+			select: { user: { select: { id: true } } },
+			where: { id: sessionId, expirationDate: { gt: new Date() } },
+		})
+	} catch (error) {
+		console.log('Query Error', error)
+	}
+
 	if (!session?.user) {
 		throw redirect('/', {
 			headers: {
@@ -63,27 +71,25 @@ const tracksWithVersions = Prisma.validator<Prisma.TrackDefaultArgs>()({
 const userWithTracks = Prisma.validator<Prisma.UserDefaultArgs>()({
 	select: { id: true, email: true, name: true, tracks: tracksWithVersions },
 })
-
 export type UserWithTracks = Prisma.UserGetPayload<typeof userWithTracks>
 
 export async function getUserWithTracks(storageContext: StorageContext, request: Request) {
 	const userId = await getUserId(storageContext, request)
 	const { db } = storageContext
 	if (!userId) return null
-
-	const user = await db.user.findUnique({
-		select: {
-			id: true,
-			email: true,
-			name: true,
-			tracks: {
-				select: tracksWithVersions.select,
-				orderBy: { created_at: 'desc' },
-			},
-		},
-		where: { id: userId },
-	})
-	return user
+	try {
+		const user = await db.user.findUnique({
+			select: userWithTracks.select,
+			where: { id: userId },
+		})
+		return user
+	} catch (error) {
+		if (error instanceof Prisma.PrismaClientInitializationError) {
+			console.log(error)
+			throw new Error('Failed to connect to the database.')
+		}
+		console.log('Query Error', error)
+	}
 }
 
 export async function requireUserId(
